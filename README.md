@@ -76,9 +76,13 @@ Misclassifications mainly occur between visually similar materials (e.g., plasti
 ### FastAPI (Optional)
 - REST API for inference
 - `/health` and `/predict` endpoints
+
 📌 Author
 
 Muhammad Junaid Shah Bukhari
 Public Administration & Governance | Data Science & AI
 📍 Islamabad, Pakistan
+
+LINKEDIn: https://www.linkedin.com/in/junaidshah2001/
+Kaggle: https://www.kaggle.com/junaid2101
 
