@@ -1,0 +1,75 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+tensorflow
+numpy
+
+%%writefile app.py
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+import time, json, io
+import numpy as np
+import tensorflow as tf
+from PIL import Image
+
+MODEL_PATH = "garbage_tf.keras"
+LABELS_PATH = "labels.json"
+IMG = 224
+TOPK = 3
+
+app = FastAPI(title="Garbage Classification API", version="1.0.0")
+
+model = tf.keras.models.load_model(MODEL_PATH)
+labels = json.load(open(LABELS_PATH))
+
+def preprocess(img: Image.Image):
+    img = img.convert("RGB").resize((IMG, IMG))
+    x = np.array(img, dtype=np.float32)[None, ...]
+    x = tf.keras.applications.efficientnet.preprocess_input(x)
+    return x
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "labels": labels}
+
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    t0 = time.time()
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail=f"Unsupported type: {file.content_type}")
+
+    content = await file.read()
+    try:
+        img = Image.open(io.BytesIO(content))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    p = model.predict(preprocess(img), verbose=0)[0]
+    best_i = int(np.argmax(p))
+    top_idx = np.argsort(-p)[:min(TOPK, len(labels))]
+    top_k = [{"class": labels[int(i)], "prob": float(p[int(i)])} for i in top_idx]
+
+    return JSONResponse({
+        "predicted_class": labels[best_i],
+        "confidence": float(p[best_i]),
+        "top_k": top_k,
+        "latency_ms": round((time.time() - t0) * 1000, 2)
+    })
+
+%%writefile Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy code + artifacts
+COPY app.py .
+COPY labels.json .
+COPY garbage_tf.keras .
+
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
